@@ -8,24 +8,40 @@ from modules.ui_helpers import (render_page_header, _sec, _info, _warn,
                                 _div, PRIMARY, GREEN, RED, ORANGE, PURPLE,
                                 GRAY_400, GRAY_900)
 
-
-def _get_uploads_dir():
-    d = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
-    os.makedirs(d, exist_ok=True);
-    return d
+# ─── CLOUDINARY CONFIG ────────────────────────────────────────────────────────
+CLOUDINARY_CLOUD_NAME = "dqqoeitd5"
+CLOUDINARY_API_KEY    = "814885149118549"
+CLOUDINARY_API_SECRET = "Q-KzUNn4LAqOe_19BhkCAnfRWfA"
 
 
 def _sauvegarder_photo(fichier, matricule):
-    import time
-    ext = fichier.name.rsplit(".", 1)[-1].lower()
-    nom = f"{matricule}_{int(time.time())}.{ext}"
-    path = os.path.join(_get_uploads_dir(), nom)
-    with open(path, "wb") as f: f.write(fichier.getbuffer())
-    return path
+    """Upload la photo sur Cloudinary et retourne l'URL."""
+    try:
+        import cloudinary, cloudinary.uploader
+        cloudinary.config(
+            cloud_name=CLOUDINARY_CLOUD_NAME,
+            api_key=CLOUDINARY_API_KEY,
+            api_secret=CLOUDINARY_API_SECRET,
+        )
+        import time
+        public_id = f"engins/{matricule}_{int(time.time())}"
+        result = cloudinary.uploader.upload(
+            fichier.getbuffer().tobytes(),
+            public_id=public_id,
+            overwrite=True,
+        )
+        return result["secure_url"]
+    except Exception as e:
+        raise Exception(f"Erreur Cloudinary : {e}")
 
 
 def _photo_b64(path, height=160):
+    """Affiche la photo depuis une URL Cloudinary ou un chemin local."""
     try:
+        if path and path.startswith("http"):
+            return (f'<div style="height:{height}px;overflow:hidden">'
+                    f'<img src="{path}" '
+                    f'style="width:100%;height:{height}px;object-fit:cover;display:block"/></div>')
         with open(path, "rb") as f:
             b64 = base64.b64encode(f.read()).decode()
         ext = path.rsplit(".", 1)[-1].lower()
@@ -97,7 +113,12 @@ def render():
 
             # Generate photo HTML safely
             _ph = engin.photo_path or ""
-            if _ph and os.path.exists(_ph):
+            if _ph and _ph.startswith("http"):
+                photo_html = (f'<div style="height:160px;overflow:hidden;flex-shrink:0">'
+                              f'<img src="{_ph}" '
+                              f'style="width:100%;height:160px;object-fit:cover;display:block"/>'
+                              f'</div>')
+            elif _ph and os.path.exists(_ph):
                 try:
                     with open(_ph, "rb") as _pf:
                         _pb = base64.b64encode(_pf.read()).decode()
@@ -219,13 +240,18 @@ def render():
         col_ph_cur, col_ph_new = st.columns(2)
         with col_ph_cur:
             st.markdown("**Photo actuelle**")
-            if engin_m.photo_path and os.path.exists(engin_m.photo_path or ""):
+            _has_photo = engin_m.photo_path and (
+                engin_m.photo_path.startswith("http") or os.path.exists(engin_m.photo_path or "")
+            )
+            if _has_photo:
                 _ph_html = _photo_b64(engin_m.photo_path, 150)
                 st.markdown(_ph_html, unsafe_allow_html=True)
-                st.caption(os.path.basename(engin_m.photo_path))
+                if not engin_m.photo_path.startswith("http"):
+                    st.caption(os.path.basename(engin_m.photo_path))
                 if st.button("Supprimer la photo", key="mod_ph_del_btn", type="secondary"):
                     try:
-                        if os.path.exists(engin_m.photo_path): os.remove(engin_m.photo_path)
+                        if engin_m.photo_path and not engin_m.photo_path.startswith("http") and os.path.exists(engin_m.photo_path):
+                            os.remove(engin_m.photo_path)
                         ctrl.update_engin(engin_m.id, photo_path=None)
                         st.success("Photo supprimée.");
                         st.rerun()
@@ -255,7 +281,10 @@ def render():
         _div()
 
         # Photo actuelle (legacy check — kept for form below)
-        if engin_m.photo_path and os.path.exists(engin_m.photo_path):
+        _has_photo_legacy = engin_m.photo_path and (
+            engin_m.photo_path.startswith("http") or os.path.exists(engin_m.photo_path)
+        )
+        if _has_photo_legacy:
             st.markdown(_photo_b64(engin_m.photo_path, 150), unsafe_allow_html=True)
             col_ph1, col_ph2 = st.columns(2)
             with col_ph1:
@@ -269,7 +298,8 @@ def render():
                     st.rerun()
             with col_ph2:
                 if st.button("Supprimer la photo", key="mod_ph_del"):
-                    if os.path.exists(engin_m.photo_path): os.remove(engin_m.photo_path)
+                    if engin_m.photo_path and not engin_m.photo_path.startswith("http") and os.path.exists(engin_m.photo_path):
+                        os.remove(engin_m.photo_path)
                     ctrl.update_engin(engin_m.id, photo_path=None)
                     st.success("Photo supprimée.");
                     st.rerun()
