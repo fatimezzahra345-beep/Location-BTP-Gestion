@@ -21,7 +21,7 @@ def render():
             _info("Aucun devis. Créez votre premier devis.")
 
         # Filtres
-        statuts = ["Tous","brouillon","valide","facture","annule"]
+        statuts = ["Tous","brouillon","valide","annule"]
         col_f, col_s = st.columns([2, 3])
         with col_f:
             fil = st.selectbox("Filtrer par statut", statuts, key="dev_fil")
@@ -33,13 +33,13 @@ def render():
                    and (not search or search.lower() in d["numero"].lower()
                         or search.lower() in d["client"].lower())]
 
-        badge = {"brouillon":"#94A3B8","valide":GREEN,"facture":PRIMARY,"annule":RED}
+        badge = {"brouillon":"#94A3B8","valide":GREEN,"annule":RED}
         df = pd.DataFrame([{
             "Numéro": d["numero"], "Client": d["client"],
             "Début": d["date_debut"].strftime("%d/%m/%Y") if d["date_debut"] else "—",
             "Fin":   d["date_fin"].strftime("%d/%m/%Y") if d["date_fin"] else "—",
             "TTC (MAD)": f"{d['montant_ttc']:,.2f}",
-            "Statut": d["statut"].upper(),
+            "Statut": ("valide" if d["statut"] == "facture" else d["statut"]).upper(),
         } for d in filtres])
         st.dataframe(df, width="stretch", hide_index=True, height=280)
 
@@ -61,7 +61,7 @@ def render():
 
             # ── Valider
             with col_a:
-                if statut == "brouillon":
+                if statut in ["brouillon", "facture"]:
                     if st.button("Valider le Devis", type="primary", width="stretch",
                                   key="dv_val"):
                         ctrl.valider_devis(dv_id)
@@ -71,7 +71,7 @@ def render():
 
             # ── Annuler
             with col_c:
-                if statut not in ["annule","facture"]:
+                if statut not in ["annule"]:
                     if st.button("Annuler le Devis", type="secondary",
                                   width="stretch", key="dv_ann"):
                         ctrl.annuler_devis(dv_id); st.success("Devis annulé."); st.rerun()
